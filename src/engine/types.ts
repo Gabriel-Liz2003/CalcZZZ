@@ -8,10 +8,10 @@ export type ModifierMode = 'add' | 'multiply' | 'override';
 export type StatKey = keyof CombatStats | 'enemyDefReduction' | 'enemyDefIgnore' | 'enemyResReduction' | 'enemyDmgTaken' | 'stunMultiplier' | 'skillMultiplier';
 
 export interface DataMeta { gameVersion: string; source: string; lastVerified: string; verified: boolean; notes?: string; sourceId?: string; }
-export interface CombatStats { hp:number; atk:number; def:number; impact:number; critRate:number; critDmg:number; dmgBonus:number; pen:number; penRatio:number; resIgnore:number; anomalyProficiency:number; anomalyMastery:number; energyRegen:number; }
-export interface EnemyState { id:string; name:string; level:number; def:number; res:Partial<Record<Attribute,number>>; resReduction:Partial<Record<Attribute,number>>; defReduction:number; defIgnore:number; dmgTaken:number; stunned:boolean; stunMultiplier:number; daze:number; maxDaze:number; debuffs:string[]; }
-export interface SkillHit { multiplier:number; at:number; anomalyBuildup?:number; dazeMultiplier?:number; canCrit?:boolean; }
-export interface SkillDefinition { id:string; name:string; type:SkillType; level:number; attribute:Attribute; duration:number; energyCost?:number; hits:SkillHit[]; specialProperties?:string[]; meta:DataMeta; }
+export interface CombatStats { hp:number; atk:number; def:number; impact:number; critRate:number; critDmg:number; dmgBonus:number; pen:number; penRatio:number; resIgnore:number; anomalyProficiency:number; anomalyMastery:number; energyRegen:number; dazeBonus?:number; energyGenerationRate?:number; }
+export interface EnemyState { id:string; name:string; level:number; def:number; res:Partial<Record<Attribute,number>>; resReduction:Partial<Record<Attribute,number>>; defReduction:number; defIgnore:number; dmgTaken:number; stunned:boolean; stunMultiplier:number; daze:number; maxDaze:number; debuffs:string[]; stunStart?:number; stunDuration?:number; dazeRes?:number; dazeTaken?:number; maxChainAttacks?:number; }
+export interface SkillHit { multiplier:number; at:number; anomalyBuildup?:number; dazeMultiplier?:number; canCrit?:boolean; heavy?:boolean; }
+export interface SkillDefinition { id:string; name:string; type:SkillType; level:number; attribute:Attribute; duration:number; energyCost?:number; energyGeneration?:number; hits:SkillHit[]; specialProperties?:string[]; meta:DataMeta; }
 export type Condition =
   | { op:'always' }
   | { op:'and'; conditions:Condition[] }
@@ -35,19 +35,19 @@ export interface AgentDefinition { id:string; name:string; rarity:'S'|'A'; attri
 export interface WEngineDefinition { id:string; name:string; rarity:'S'|'A'|'B'; specialty:Specialty; level:number; baseAtk:number; advancedStat:{stat:StatKey;value:number}; refinementValues?:number[]; effects:EffectDefinition[]; meta:DataMeta; }
 export interface DriveDiscDefinition { id:string; name:string; twoPiece:EffectDefinition[]; fourPiece:EffectDefinition[]; meta:DataMeta; }
 export interface DriveDiscSelection { setId:string; pieces:number; }
-export interface BuildConfig { id:string; name:string; agentId:string; level:number; mindscape:number; skillLevels:Partial<Record<SkillType,number>>; wengineId?:string; wengineLevel:number; refinement:number; driveDiscs:DriveDiscSelection[]; mainStats:Partial<CombatStats>; substats:Partial<CombatStats>; manualFinalStats?:CombatStats; useManualFinalStats:boolean; }
+export interface BuildConfig { id:string; name:string; agentId:string; level:number; mindscape:number; skillLevels:Partial<Record<SkillType,number>>; wengineId?:string; wengineLevel:number; refinement:number; driveDiscs:DriveDiscSelection[]; mainStats:Partial<CombatStats>; substats:Partial<CombatStats>; manualFinalStats?:CombatStats; useManualFinalStats:boolean; initialEnergy?:number; }
 export interface TeamConfig { id:string; name:string; builds:BuildConfig[]; }
-export interface RuntimeCharacterState { id:string; energy:number; isActive:boolean; fieldTime:number; }
+export interface RuntimeCharacterState { id:string; energy:number; maxEnergy?:number; isActive:boolean; fieldTime:number; resources?:Record<string,number>; }
 export interface ActiveEffect { key:string; definition:EffectDefinition; sourceCharacterId:string; startedAt:number; expiresAt?:number; stacks:number; lastTriggeredAt:number; snapshotStats?:CombatStats; }
-export interface CombatState { currentTime:number; activeCharacterId:string; team:AgentDefinition[]; characterStates:Record<string,RuntimeCharacterState>; enemy:EnemyState; activeEffects:ActiveEffect[]; lastAction?:{agentId:string;skillType:SkillType;skillId?:string;at:number}; triggerTimes:Partial<Record<Trigger,number>>; effectTriggerTimes:Record<string,number>; anomaly:AnomalyState; }
+export interface CombatState { currentTime:number; activeCharacterId:string; team:AgentDefinition[]; characterStates:Record<string,RuntimeCharacterState>; enemy:EnemyState; activeEffects:ActiveEffect[]; lastAction?:{agentId:string;skillType:SkillType;skillId?:string;at:number}; triggerTimes:Partial<Record<Trigger,number>>; effectTriggerTimes:Record<string,number>; anomaly:AnomalyState; chainWindowOpen?:boolean; chainAttacksRemaining?:number; }
 export interface EffectContext { state:CombatState; sourceAgentId:string; targetAgentId?:string; }
 export interface DefenseBreakdown { baseDefense:number; combinedShred:number; afterDefReductionAndIgnore:number; afterPenRatio:number; afterFlatPen:number; levelFactor:number; multiplier:number; }
 export interface DamageBreakdown { baseDamage:number; skillMultiplier:number; dmgBonusMultiplier:number; critMultiplier:number; defMultiplier:number; defense:DefenseBreakdown; resMultiplier:number; vulnerabilityMultiplier:number; stunMultiplier:number; specialMultiplier:number; nonCrit:number; crit:number; expected:number; }
-export interface RotationAction { id:string; agentId:string; skillId?:string; type:'skill'|'switch'|'wait'; durationOverride?:number; }
-export interface RotationConfig { id:string; name:string; actions:RotationAction[]; }
-export interface TimelineEntry { time:number; kind:'action'|'hit'|'effect'|'expire'|'anomaly'|'switch'|'resource'|'warning'|'stun'; label:string; agentId?:string; skillId?:string; damage:number; }
-export interface RotationResult { duration:number; totalDamage:number; dps:number; timeline:TimelineEntry[]; damageByCharacter:Record<string,number>; damageBySkill:Record<string,number>; buffUptime:Record<string,number>; fieldTime:Record<string,number>; critContribution:number; anomalyContribution:number; }
-export interface AnomalyDefinition { attribute:Attribute; threshold:number; baseMultiplier:number; duration:number; tickInterval?:number; disorderBaseMultiplier?:number; meta:DataMeta; }
-export interface AnomalyContribution { agentId:string; buildup:number; ap:number; atk:number; }
-export interface ActiveAnomaly { attribute:Attribute; appliedAt:number; expiresAt:number; contributions:AnomalyContribution[]; }
+export interface RotationAction { id:string; agentId:string; skillId?:string; type:'skill'|'switch'|'wait'; durationOverride?:number; force?:boolean; }
+export interface RotationConfig { id:string; name:string; actions:RotationAction[]; repeat?:number; simulateFor?:number; ignoreResourceRequirements?:boolean; forceInvalidActions?:boolean; }
+export interface TimelineEntry { time:number; kind:'action'|'hit'|'effect'|'expire'|'anomaly'|'switch'|'resource'|'warning'|'stun'; label:string; agentId?:string; skillId?:string; damage:number; activeBuffs?:string[]; enemyDebuffs?:string[]; }
+export interface RotationResult { duration:number; totalDamage:number; dps:number; burstDps?:number; sustainedDps?:number; timeline:TimelineEntry[]; damageByCharacter:Record<string,number>; damageBySkill:Record<string,number>; buffUptime:Record<string,number>; fieldTime:Record<string,number>; critContribution:number; anomalyContribution:number; stunUptime?:number; warnings?:string[]; finalState?:CombatState; }
+export interface AnomalyDefinition { attribute:Attribute; threshold:number; baseMultiplier:number; duration:number; tickInterval?:number; disorderBaseMultiplier?:number; tickMultiplier?:number; maxTicks?:number; meta:DataMeta; }
+export interface AnomalyContribution { agentId:string; buildup:number; ap:number; atk:number; level?:number; }
+export interface ActiveAnomaly { attribute:Attribute; appliedAt:number; expiresAt:number; contributions:AnomalyContribution[]; lastTickAt?:number; ticksTriggered?:number; }
 export interface AnomalyState { buildup:Partial<Record<Attribute,number>>; contributions:Partial<Record<Attribute,AnomalyContribution[]>>; active?:ActiveAnomaly; }
