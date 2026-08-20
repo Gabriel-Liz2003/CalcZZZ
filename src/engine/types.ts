@@ -20,6 +20,9 @@ export type Condition =
   | { op:'hasFactionMember'; faction:string; excludingSelf?:boolean }
   | { op:'hasAttributeMember'; attribute:Attribute; excludingSelf?:boolean }
   | { op:'hasSpecialtyMember'; specialty:Specialty; excludingSelf?:boolean }
+  | { op:'sourceHasSpecialty'; specialty:Specialty }
+  | { op:'sourceStatAtLeast'; stat:keyof CombatStats; value:number }
+  | { op:'currentSkillTypeIs'; skillType:SkillType }
   | { op:'enemyIsStunned'; value?:boolean }
   | { op:'enemyHasDebuff'; debuff:string }
   | { op:'characterIsActive' }
@@ -28,7 +31,7 @@ export type Condition =
   | { op:'energyAtLeast'; amount:number }
   | { op:'previousActionIs'; skillType:SkillType }
   | { op:'timeSinceTriggerAtMost'; trigger:Trigger; seconds:number };
-export interface EffectModifier { stat:StatKey; value:number; mode?:ModifierMode; attribute?:Attribute; }
+export interface EffectModifier { stat:StatKey; value:number; mode?:ModifierMode; attribute?:Attribute; refinementValues?:number[]; }
 export interface EffectDefinition { id:string; name:string; description:string; sourceType:'agent'|'mindscape'|'wengine'|'disc'|'enemy'|'manual'; trigger:Trigger; target:EffectTarget; specificCharacterId?:string; modifiers:EffectModifier[]; condition?:Condition; duration?:number; maxStacks?:number; stacksPerTrigger?:number; cooldown?:number; reapply?:ReapplyPolicy; extendBy?:number; maxDuration?:number; snapshot?:boolean; meta:DataMeta; }
 export interface MindscapeDefinition { level:1|2|3|4|5|6; name:string; description:string; effects:EffectDefinition[]; skillLevelBonuses?:Partial<Record<SkillType,number>>; meta:DataMeta; }
 export interface AgentDefinition { id:string; name:string; rarity:'S'|'A'; attribute:Attribute; specialty:Specialty; faction:string; maxLevel:number; baseStats:CombatStats; staticBonuses?:Partial<CombatStats>; skills:SkillDefinition[]; coreEffects:EffectDefinition[]; additionalAbility?:EffectDefinition; mindscapes:MindscapeDefinition[]; meta:DataMeta; }
@@ -37,9 +40,9 @@ export interface DriveDiscDefinition { id:string; name:string; twoPiece:EffectDe
 export interface DriveDiscSelection { setId:string; pieces:number; }
 export interface BuildConfig { id:string; name:string; agentId:string; level:number; mindscape:number; skillLevels:Partial<Record<SkillType,number>>; wengineId?:string; wengineLevel:number; refinement:number; driveDiscs:DriveDiscSelection[]; mainStats:Partial<CombatStats>; substats:Partial<CombatStats>; manualFinalStats?:CombatStats; useManualFinalStats:boolean; initialEnergy?:number; }
 export interface TeamConfig { id:string; name:string; builds:BuildConfig[]; }
-export interface RuntimeCharacterState { id:string; energy:number; maxEnergy?:number; isActive:boolean; fieldTime:number; resources?:Record<string,number>; }
+export interface RuntimeCharacterState { id:string; energy:number; maxEnergy?:number; isActive:boolean; fieldTime:number; resources?:Record<string,number>; staticStats?:CombatStats; }
 export interface ActiveEffect { key:string; definition:EffectDefinition; sourceCharacterId:string; startedAt:number; expiresAt?:number; stacks:number; lastTriggeredAt:number; snapshotStats?:CombatStats; }
-export interface CombatState { currentTime:number; activeCharacterId:string; team:AgentDefinition[]; characterStates:Record<string,RuntimeCharacterState>; enemy:EnemyState; activeEffects:ActiveEffect[]; lastAction?:{agentId:string;skillType:SkillType;skillId?:string;at:number}; triggerTimes:Partial<Record<Trigger,number>>; effectTriggerTimes:Record<string,number>; anomaly:AnomalyState; chainWindowOpen?:boolean; chainAttacksRemaining?:number; }
+export interface CombatState { currentTime:number; activeCharacterId:string; team:AgentDefinition[]; characterStates:Record<string,RuntimeCharacterState>; enemy:EnemyState; activeEffects:ActiveEffect[]; currentAction?:{agentId:string;skillType:SkillType;skillId?:string;at:number}; lastAction?:{agentId:string;skillType:SkillType;skillId?:string;at:number}; triggerTimes:Partial<Record<Trigger,number>>; effectTriggerTimes:Record<string,number>; anomaly:AnomalyState; chainWindowOpen?:boolean; chainAttacksRemaining?:number; }
 export interface EffectContext { state:CombatState; sourceAgentId:string; targetAgentId?:string; }
 export interface DefenseBreakdown { baseDefense:number; combinedShred:number; afterDefReductionAndIgnore:number; afterPenRatio:number; afterFlatPen:number; levelFactor:number; multiplier:number; }
 export interface DamageBreakdown { baseDamage:number; skillMultiplier:number; dmgBonusMultiplier:number; critMultiplier:number; defMultiplier:number; defense:DefenseBreakdown; resMultiplier:number; vulnerabilityMultiplier:number; stunMultiplier:number; specialMultiplier:number; nonCrit:number; crit:number; expected:number; }
