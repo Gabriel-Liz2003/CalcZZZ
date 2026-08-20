@@ -17,16 +17,18 @@ export function pruneExpiredEffects(state: CombatState): ActiveEffect[] {
 export function triggerEffects(state: CombatState, definitions: EffectDefinition[], sourceCharacterId: string, trigger: Trigger): { state: CombatState; activated: ActiveEffect[] } {
   let activeEffects = pruneExpiredEffects(state);
   const activated: ActiveEffect[] = [];
-  const context: EffectContext = { state: { ...state, activeEffects }, sourceAgentId: sourceCharacterId };
+  const effectTriggerTimes = { ...state.effectTriggerTimes };
 
   for (const definition of definitions) {
     if (definition.trigger !== trigger && definition.trigger !== 'always') continue;
+    // Rebuild the context for every definition so later effects can depend on stacks
+    // created by earlier effects in the same trigger (e.g. Yesterday Calls stack 3).
+    const context: EffectContext = { state: { ...state, activeEffects, effectTriggerTimes }, sourceAgentId: sourceCharacterId };
     if (!evaluateCondition(definition.condition, context)) continue;
     const existingIndex = activeEffects.findIndex((item) => item.definition.id === definition.id && item.sourceCharacterId === sourceCharacterId);
     const existing = existingIndex >= 0 ? activeEffects[existingIndex] : undefined;
     const cooldownKey = `${definition.id}:${sourceCharacterId}`;
-    const lastTrigger = state.effectTriggerTimes[cooldownKey];
-    // Cooldown is checked from trigger history, not from whether the previous buff still exists.
+    const lastTrigger = effectTriggerTimes[cooldownKey];
     if (definition.cooldown && lastTrigger != null && state.currentTime - lastTrigger < definition.cooldown) continue;
 
     const gained = Math.max(1, definition.stacksPerTrigger ?? 1);
@@ -41,15 +43,13 @@ export function triggerEffects(state: CombatState, definitions: EffectDefinition
         const extension = Math.max(0, definition.extendBy ?? duration);
         const currentExpiry = existing.expiresAt ?? state.currentTime;
         const uncapped = currentExpiry + extension;
-        expiresAt = definition.maxDuration == null
-          ? uncapped
-          : Math.min(uncapped, state.currentTime + Math.max(0, definition.maxDuration));
+        expiresAt = definition.maxDuration == null ? uncapped : Math.min(uncapped, state.currentTime + Math.max(0, definition.maxDuration));
       }
       if (policy === 'replace' || policy === 'refresh') expiresAt = state.currentTime + Math.max(0, duration);
     }
 
     const active: ActiveEffect = {
-      key: `${definition.id}:${sourceCharacterId}`,
+      key: cooldownKey,
       definition,
       sourceCharacterId,
       startedAt: existing && (definition.reapply ?? 'refresh') !== 'replace' ? existing.startedAt : state.currentTime,
@@ -60,11 +60,10 @@ export function triggerEffects(state: CombatState, definitions: EffectDefinition
     };
     if (existingIndex >= 0) activeEffects = activeEffects.map((item, index) => index === existingIndex ? active : item);
     else activeEffects = [...activeEffects, active];
+    effectTriggerTimes[cooldownKey] = state.currentTime;
     activated.push(active);
   }
 
-  const effectTriggerTimes = { ...state.effectTriggerTimes };
-  for (const item of activated) effectTriggerTimes[item.key] = state.currentTime;
   return { state: { ...state, activeEffects, triggerTimes: { ...state.triggerTimes, [trigger]: state.currentTime }, effectTriggerTimes }, activated };
 }
 
@@ -77,15 +76,21 @@ function applyStat(stats: CombatStats, stat: StatKey, value: number, mode: 'add'
   else stats[key] = current + value;
 }
 
-export function applyActiveEffects(baseStats: CombatStats, baseEnemy: EnemyState, state: CombatState, targetAgentId: string): { stats: CombatStats; enemy: EnemyState; specialMultiplier: number; activeEffects: ActiveEffect[] } {
+export function appliesToTarget(active: ActiveEffect, state: CombatState, targetAgentId: string): boolean {
+  return active.definition.target === 'ENEMY' || targetMatches(active, state, targetAgentId);
+}
+
+export function applyActiveEffects(baseStats: CombatStats, baseEnemy: EnemyState, state: CombatState, targetAgentId: string): { stats: CombatStats; enemy: EnemyState; specialMultiplier: number; activeEffects: ActiveEffect[]; appliedEffects: ActiveEffect[] } {
   const stats = { ...baseStats };
   const enemy: EnemyState = { ...baseEnemy, res: { ...baseEnemy.res }, resReduction: { ...baseEnemy.resReduction }, debuffs: [...baseEnemy.debuffs] };
   let specialMultiplier = 1;
   const activeEffects = pruneExpiredEffects(state);
+  const appliedEffects: ActiveEffect[] = [];
 
   for (const active of activeEffects) {
     const context: EffectContext = { state: { ...state, activeEffects }, sourceAgentId: active.sourceCharacterId, targetAgentId };
-    if (!evaluateCondition(active.definition.condition, context)) continue;
+    if (!evaluateCondition(active.definition.condition, context) || !appliesToTarget(active, state, targetAgentId)) continue;
+    appliedEffects.push(active);
     const stacks = active.stacks;
     for (const modifier of active.definition.modifiers) {
       const value = modifier.value * stacks;
@@ -99,12 +104,11 @@ export function applyActiveEffects(baseStats: CombatStats, baseEnemy: EnemyState
         else if (modifier.stat === 'stunMultiplier') enemy.stunMultiplier += value;
         continue;
       }
-      if (!targetMatches(active, state, targetAgentId)) continue;
       if (modifier.stat === 'skillMultiplier') specialMultiplier *= 1 + value;
       else applyStat(stats, modifier.stat, value, modifier.mode ?? 'add');
     }
   }
-  return { stats, enemy, specialMultiplier, activeEffects };
+  return { stats, enemy, specialMultiplier, activeEffects, appliedEffects };
 }
 
 export function collectAlwaysEffects(state: CombatState, definitions: Array<{ sourceId: string; effects: EffectDefinition[] }>): CombatState {
