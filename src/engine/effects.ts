@@ -72,7 +72,7 @@ function applyStat(stats: CombatStats, stat: StatKey, value: number, mode: 'add'
   const key = stat as keyof CombatStats;
   const current = typeof stats[key] === 'number' && Number.isFinite(stats[key]) ? stats[key] : 0;
   if (mode === 'override') stats[key] = value;
-  else if (mode === 'multiply') stats[key] = current * value;
+  else if (mode === 'multiply') stats[key] = current * (1 + value);
   else stats[key] = current + value;
 }
 
@@ -86,6 +86,7 @@ export function applyActiveEffects(baseStats: CombatStats, baseEnemy: EnemyState
   let specialMultiplier = 1;
   const activeEffects = pruneExpiredEffects(state);
   const appliedEffects: ActiveEffect[] = [];
+  const multiplicativeBuckets = new Map<keyof CombatStats, number>();
 
   for (const active of activeEffects) {
     const context: EffectContext = { state: { ...state, activeEffects }, sourceAgentId: active.sourceCharacterId, targetAgentId };
@@ -105,8 +106,15 @@ export function applyActiveEffects(baseStats: CombatStats, baseEnemy: EnemyState
         continue;
       }
       if (modifier.stat === 'skillMultiplier') specialMultiplier *= 1 + value;
-      else applyStat(stats, modifier.stat, value, modifier.mode ?? 'add');
+      else if (modifier.mode === 'multiply' && modifier.stat in stats) {
+        const key = modifier.stat as keyof CombatStats;
+        multiplicativeBuckets.set(key, (multiplicativeBuckets.get(key) ?? 0) + value);
+      } else applyStat(stats, modifier.stat, value, modifier.mode ?? 'add');
     }
+  }
+  for (const [key, bonus] of multiplicativeBuckets) {
+    const current = typeof stats[key] === 'number' && Number.isFinite(stats[key]) ? stats[key] : 0;
+    stats[key] = current * (1 + bonus);
   }
   return { stats, enemy, specialMultiplier, activeEffects, appliedEffects };
 }
