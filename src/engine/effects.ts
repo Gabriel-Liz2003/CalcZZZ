@@ -26,18 +26,26 @@ export function triggerEffects(state: CombatState, definitions: EffectDefinition
     const existing = existingIndex >= 0 ? activeEffects[existingIndex] : undefined;
     const cooldownKey = `${definition.id}:${sourceCharacterId}`;
     const lastTrigger = state.effectTriggerTimes[cooldownKey];
+    // Cooldown is checked from trigger history, not from whether the previous buff still exists.
     if (definition.cooldown && lastTrigger != null && state.currentTime - lastTrigger < definition.cooldown) continue;
 
     const gained = Math.max(1, definition.stacksPerTrigger ?? 1);
     const maxStacks = Math.max(1, definition.maxStacks ?? 1);
     const nextStacks = Math.min(maxStacks, (existing?.stacks ?? 0) + gained);
     const duration = definition.duration;
-    let expiresAt = duration == null ? undefined : state.currentTime + duration;
+    let expiresAt = duration == null ? undefined : state.currentTime + Math.max(0, duration);
     if (existing && duration != null) {
       const policy = definition.reapply ?? 'refresh';
       if (policy === 'ignore') continue;
-      if (policy === 'extend') expiresAt = (existing.expiresAt ?? state.currentTime) + duration;
-      if (policy === 'replace' || policy === 'refresh') expiresAt = state.currentTime + duration;
+      if (policy === 'extend') {
+        const extension = Math.max(0, definition.extendBy ?? duration);
+        const currentExpiry = existing.expiresAt ?? state.currentTime;
+        const uncapped = currentExpiry + extension;
+        expiresAt = definition.maxDuration == null
+          ? uncapped
+          : Math.min(uncapped, state.currentTime + Math.max(0, definition.maxDuration));
+      }
+      if (policy === 'replace' || policy === 'refresh') expiresAt = state.currentTime + Math.max(0, duration);
     }
 
     const active: ActiveEffect = {
@@ -63,9 +71,10 @@ export function triggerEffects(state: CombatState, definitions: EffectDefinition
 function applyStat(stats: CombatStats, stat: StatKey, value: number, mode: 'add' | 'multiply' | 'override'): void {
   if (!(stat in stats)) return;
   const key = stat as keyof CombatStats;
+  const current = typeof stats[key] === 'number' && Number.isFinite(stats[key]) ? stats[key] : 0;
   if (mode === 'override') stats[key] = value;
-  else if (mode === 'multiply') stats[key] *= value;
-  else stats[key] += value;
+  else if (mode === 'multiply') stats[key] = current * value;
+  else stats[key] = current + value;
 }
 
 export function applyActiveEffects(baseStats: CombatStats, baseEnemy: EnemyState, state: CombatState, targetAgentId: string): { stats: CombatStats; enemy: EnemyState; specialMultiplier: number; activeEffects: ActiveEffect[] } {
@@ -82,6 +91,7 @@ export function applyActiveEffects(baseStats: CombatStats, baseEnemy: EnemyState
       const value = modifier.value * stacks;
       if (active.definition.target === 'ENEMY') {
         if (modifier.stat === 'enemyDefReduction') enemy.defReduction += value;
+        else if (modifier.stat === 'enemyDefIgnore') enemy.defIgnore += value;
         else if (modifier.stat === 'enemyResReduction') {
           const attribute = modifier.attribute ?? state.team.find((a) => a.id === targetAgentId)?.attribute ?? 'Other';
           enemy.resReduction[attribute] = (enemy.resReduction[attribute] ?? 0) + value;
