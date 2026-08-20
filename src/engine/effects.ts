@@ -21,8 +21,6 @@ export function triggerEffects(state: CombatState, definitions: EffectDefinition
 
   for (const definition of definitions) {
     if (definition.trigger !== trigger && definition.trigger !== 'always') continue;
-    // Rebuild the context for every definition so later effects can depend on stacks
-    // created by earlier effects in the same trigger (e.g. Yesterday Calls stack 3).
     const context: EffectContext = { state: { ...state, activeEffects, effectTriggerTimes }, sourceAgentId: sourceCharacterId };
     if (!evaluateCondition(definition.condition, context)) continue;
     const existingIndex = activeEffects.findIndex((item) => item.definition.id === definition.id && item.sourceCharacterId === sourceCharacterId);
@@ -40,6 +38,8 @@ export function triggerEffects(state: CombatState, definitions: EffectDefinition
       const policy = definition.reapply ?? 'refresh';
       if (policy === 'ignore') continue;
       if (policy === 'extend') {
+        const remaining = Math.max(0, (existing.expiresAt ?? state.currentTime) - state.currentTime);
+        if (definition.extendIfRemainingBelow != null && remaining >= definition.extendIfRemainingBelow) continue;
         const extension = Math.max(0, definition.extendBy ?? duration);
         const currentExpiry = existing.expiresAt ?? state.currentTime;
         const uncapped = currentExpiry + extension;
