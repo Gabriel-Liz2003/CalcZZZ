@@ -31,7 +31,6 @@ export function resolveBuild(agent: AgentDefinition, build: BuildConfig, wengine
   const staticStats: CombatStats = { ...baseStats };
   const warnings: string[] = [];
 
-  // Always-on agent progression (Core enhancement nodes, etc.) belongs to static stats, not combat buffs.
   applyPartial(staticStats, agent.staticBonuses);
   if (wengine) {
     staticStats.atk += wengine.baseAtk;
@@ -64,9 +63,19 @@ export function collectBuildEffects(agent: AgentDefinition, build: BuildConfig, 
 }
 
 function scaleRefinement(effect: EffectDefinition, wengine: WEngineDefinition, refinement: number): EffectDefinition {
-  if (!wengine.refinementValues?.length) return effect;
-  const index = Math.min(Math.max(refinement, 1), wengine.refinementValues.length) - 1;
-  const base = wengine.refinementValues[0] || 1;
-  const scale = wengine.refinementValues[index] / base;
-  return { ...effect, modifiers: effect.modifiers.map((modifier) => ({ ...modifier, value: modifier.value * scale })) };
+  const index = Math.min(Math.max(refinement, 1), 5) - 1;
+  return {
+    ...effect,
+    modifiers: effect.modifiers.map((modifier) => {
+      if (modifier.refinementValues?.length) {
+        const selected = modifier.refinementValues[Math.min(index, modifier.refinementValues.length - 1)];
+        return { ...modifier, value: selected };
+      }
+      if (!wengine.refinementValues?.length) return modifier;
+      const safeIndex = Math.min(index, wengine.refinementValues.length - 1);
+      const base = wengine.refinementValues[0] || 1;
+      const scale = wengine.refinementValues[safeIndex] / base;
+      return { ...modifier, value: modifier.value * scale };
+    }),
+  };
 }
