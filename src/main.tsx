@@ -1,97 +1,108 @@
 import React, { useMemo, useState } from 'react';
-import ReactDOM from 'react-dom/client';
-import { dialyn, dialynAdditionalAbility, GAME_DATA_VERSION, LAST_UPDATED, trainingAttacker } from './data/agents';
+import { createRoot } from 'react-dom/client';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { agents, anomalyDefinitions, defaultRotation, driveDiscs, GAME_DATA_VERSION, LAST_VERIFIED, trainingDummy, wengines } from './data';
+import { resolveBuild } from './engine/build';
 import { calculateStandardDamage } from './engine/damage';
-import { activateEffect } from './engine/effects';
 import { simulateRotation } from './engine/rotation';
-import type { EnemyState } from './engine/types';
+import type { BuildConfig, CombatStats, EnemyState, RotationAction, RotationConfig, SkillType, TeamConfig } from './engine/types';
+import { deletePreset, duplicatePreset, exportPreset, importPreset, loadPresets, renamePreset, savePreset, schemaVersion, type PresetEnvelope } from './state/presets';
+import { buildShareUrl, decodeShareState } from './utils/share';
 import './styles.css';
 
-const trainingEnemy: EnemyState = {
-  def: 794,
-  res: 0.1,
-  resReduction: 0,
-  defReduction: 0,
-  defIgnore: 0,
-  dmgTaken: 0,
-  stunned: false,
-  stunMultiplier: 1.5,
-};
+const makeBuild = (agentId: string, name: string): BuildConfig => ({ id: crypto.randomUUID(), name, agentId, level: 60, mindscape: 0, skillLevels: {}, wengineLevel: 60, refinement: 1, driveDiscs: [], mainStats: {}, substats: {}, useManualFinalStats: false });
+const defaultTeam: TeamConfig = { id: 'team-main', name: 'Current Team', builds: [makeBuild('dialyn', 'Dialyn'), makeBuild('training-attacker', 'Attacker')] };
 
-const fmt = (n: number) => Math.round(n).toLocaleString('pt-BR');
+type Tab = 'characters' | 'team' | 'build' | 'enemy' | 'rotation' | 'results' | 'compare' | 'saved' | 'data';
 
-function App() {
-  const [atk, setAtk] = useState(3000);
-  const [critRate, setCritRate] = useState(70);
-  const [critDmg, setCritDmg] = useState(140);
-  const [stunned, setStunned] = useState(false);
-  const [teamBuff, setTeamBuff] = useState(true);
-
-  const result = useMemo(() => {
-    const stats = { ...trainingAttacker.stats, atk, critRate: critRate / 100, critDmg: critDmg / 100 };
-    return calculateStandardDamage(stats, { ...trainingEnemy, stunned }, 10.507);
-  }, [atk, critRate, critDmg, stunned]);
-
-  const rotation = useMemo(() => {
-    const team = [dialyn, trainingAttacker];
-    const steps = [
-      { agent: dialyn, skill: dialyn.skills[0], triggerEffects: teamBuff ? [dialynAdditionalAbility] : [] },
-      { agent: dialyn, skill: dialyn.skills[1] },
-      { agent: trainingAttacker, skill: trainingAttacker.skills[0] },
-      { agent: dialyn, skill: dialyn.skills[2] },
-    ];
-    return simulateRotation(team, trainingEnemy, steps, teamBuff ? [] : [activateEffect({ ...dialynAdditionalAbility, value: 0 }, dialyn.id, 0)]);
-  }, [teamBuff]);
-
-  return (
-    <main className="shell">
-      <header>
-        <div>
-          <span className="eyebrow">THEORYCRAFT TOOL</span>
-          <h1>CalcZZZ</h1>
-          <p>Dano auditável, efeitos condicionais e rotações com timeline.</p>
-        </div>
-        <div className="version">Game Data v{GAME_DATA_VERSION}<small>Atualizado em {LAST_UPDATED}</small></div>
-      </header>
-
-      <section className="grid">
-        <article className="card controls">
-          <h2>Damage Calculator</h2>
-          <label>ATK <input type="number" value={atk} onChange={(e) => setAtk(Number(e.target.value))} /></label>
-          <label>CRIT Rate % <input type="number" value={critRate} onChange={(e) => setCritRate(Number(e.target.value))} /></label>
-          <label>CRIT DMG % <input type="number" value={critDmg} onChange={(e) => setCritDmg(Number(e.target.value))} /></label>
-          <label className="check"><input type="checkbox" checked={stunned} onChange={(e) => setStunned(e.target.checked)} /> Inimigo Stunned</label>
-          <p className="hint">Skill de referência: Dialyn EX Special: Scissors Lv.12 — 1050,7%.</p>
-        </article>
-
-        <article className="card hero">
-          <span>DANO ESPERADO</span>
-          <strong>{fmt(result.expected)}</strong>
-          <div className="mini"><b>Non-CRIT {fmt(result.nonCrit)}</b><b>CRIT {fmt(result.crit)}</b></div>
-        </article>
-      </section>
-
-      <section className="grid lower">
-        <article className="card">
-          <h2>Como esse dano foi calculado?</h2>
-          <dl>
-            <div><dt>Base Damage</dt><dd>{fmt(result.baseDamage)}</dd></div>
-            <div><dt>DMG Bonus</dt><dd>×{result.dmgBonusMultiplier.toFixed(3)}</dd></div>
-            <div><dt>DEF Modifier</dt><dd>×{result.defMultiplier.toFixed(3)}</dd></div>
-            <div><dt>Resistance</dt><dd>×{result.resMultiplier.toFixed(3)}</dd></div>
-            <div><dt>Stun</dt><dd>×{result.stunMultiplier.toFixed(3)}</dd></div>
-          </dl>
-        </article>
-
-        <article className="card">
-          <div className="row"><h2>Rotation DPS</h2><label className="check"><input type="checkbox" checked={teamBuff} onChange={(e) => setTeamBuff(e.target.checked)} /> Dialyn Additional Ability</label></div>
-          <div className="metrics"><div><span>DPS</span><strong>{fmt(rotation.dps)}</strong></div><div><span>Total</span><strong>{fmt(rotation.totalDamage)}</strong></div><div><span>Duração</span><strong>{rotation.duration.toFixed(1)}s</strong></div></div>
-          <ol className="timeline">{rotation.timeline.map((item, index) => <li key={index}><time>{item.time.toFixed(1)}s</time><span>{item.label}</span><b>{fmt(item.damage)}</b></li>)}</ol>
-          <div className={teamBuff ? 'status active' : 'status inactive'}>{teamBuff ? '🟢 Additional Ability ativa: há um agente Attack no time.' : '🔴 Buff desativado manualmente para comparação.'}</div>
-        </article>
-      </section>
-    </main>
-  );
+function loadShared(): { team: TeamConfig; rotation: RotationConfig; enemy: EnemyState } | undefined {
+  try {
+    const state = new URLSearchParams(location.search).get('state');
+    return state ? decodeShareState(state) : undefined;
+  } catch (error) { console.warn('Share state inválido', error); return undefined; }
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);
+function App() {
+  const shared = useMemo(loadShared, []);
+  const [tab, setTab] = useState<Tab>('results');
+  const [team, setTeam] = useState<TeamConfig>(shared?.team ?? defaultTeam);
+  const [enemy, setEnemy] = useState<EnemyState>(shared?.enemy ?? trainingDummy);
+  const [rotation, setRotation] = useState<RotationConfig>(shared?.rotation ?? defaultRotation);
+  const [selectedBuild, setSelectedBuild] = useState(0);
+  const [presets, setPresets] = useState<PresetEnvelope[]>(loadPresets);
+  const [importText, setImportText] = useState('');
+  const [notice, setNotice] = useState('');
+  const [characterSearch, setCharacterSearch] = useState('');
+  const [compareTeam, setCompareTeam] = useState<TeamConfig>(() => ({ ...defaultTeam, id: 'team-compare', name: 'Team B', builds: defaultTeam.builds.map((b) => ({ ...b, id: crypto.randomUUID() })) }));
+
+  const data = useMemo(() => ({ agents, wengines, discs: driveDiscs, anomalyDefinitions }), []);
+  const result = useMemo(() => simulateRotation(team, enemy, rotation, data), [team, enemy, rotation, data]);
+  const resultB = useMemo(() => simulateRotation(compareTeam, enemy, rotation, data), [compareTeam, enemy, rotation, data]);
+  const build = team.builds[selectedBuild] ?? team.builds[0];
+
+  const save = (type: 'team' | 'rotation' | 'enemy', name: string, value: unknown) => {
+    const preset: PresetEnvelope = { schemaVersion, gameVersion: GAME_DATA_VERSION, type, name, id: crypto.randomUUID(), data: value };
+    setPresets(savePreset(preset)); setNotice(`${name} salvo.`);
+  };
+  const share = async () => {
+    const url = buildShareUrl({ team, rotation, enemy });
+    await navigator.clipboard?.writeText(url); setNotice('Link compartilhável copiado.');
+  };
+
+  return <div className="app">
+    <header className="topbar"><div><h1>CalcZZZ</h1><span>ZZZ theorycraft calculator</span></div><div className="version">Game Data {GAME_DATA_VERSION}<small>verificado {LAST_VERIFIED}</small></div></header>
+    <nav className="tabs">{(['characters','team','build','enemy','rotation','results','compare','saved','data'] as Tab[]).map((item) => <button key={item} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{labelTab(item)}</button>)}</nav>
+    {notice && <div className="notice" onClick={() => setNotice('')}>{notice}</div>}
+
+    <main>
+      {tab === 'characters' && <section><h2>Characters</h2><label>Buscar personagem<input placeholder="Nome, atributo, especialidade..." value={characterSearch} onChange={(e)=>setCharacterSearch(e.target.value)}/></label><div className="card-grid">{agents.filter((agent)=>`${agent.name} ${agent.attribute} ${agent.specialty}`.toLowerCase().includes(characterSearch.toLowerCase())).map((agent) => <article className="card" key={agent.id}><div className="badge">{agent.rarity}</div><h3>{agent.name}</h3><p>{agent.attribute} · {agent.specialty} · {agent.faction}</p><div className={agent.meta.verified ? 'verified' : 'warning'}>{agent.meta.verified ? 'Dados verificados' : 'Dados não verificados'}</div><small>{agent.meta.source}</small><ul>{agent.skills.map((skill) => <li key={skill.id}>{skill.name} — {skill.hits.reduce((s,h)=>s+h.multiplier,0).toFixed(3)}×</li>)}</ul>{agent.additionalAbility && <details><summary>{agent.additionalAbility.name}</summary><p>{agent.additionalAbility.description}</p></details>}</article>)}</div></section>}
+
+      {tab === 'team' && <section><div className="section-head"><h2>Team</h2><button onClick={() => save('team', team.name, team)}>Salvar time</button></div><label>Nome<input value={team.name} onChange={(e) => setTeam({ ...team, name: e.target.value })}/></label><div className="team-slots">{team.builds.map((b,index) => <div className="card" key={b.id}><select value={b.agentId} onChange={(e) => updateBuild(setTeam, team, index, { agentId: e.target.value, name: agents.find(a=>a.id===e.target.value)?.name ?? b.name })}>{agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select><button onClick={() => { setSelectedBuild(index); setTab('build'); }}>Editar build</button><button disabled={team.builds.length<=1} onClick={() => setTeam({ ...team, builds: team.builds.filter((_,i)=>i!==index) })}>Remover</button></div>)}{team.builds.length<3 && <button className="add-card" onClick={() => setTeam({ ...team, builds: [...team.builds, makeBuild('training-attacker','Attacker')] })}>+ Agente</button>}</div></section>}
+
+      {tab === 'build' && build && <BuildEditor build={build} onChange={(next) => updateBuild(setTeam, team, selectedBuild, next)} onSave={()=>{const preset:PresetEnvelope={schemaVersion,gameVersion:GAME_DATA_VERSION,type:'build',name:build.name,id:crypto.randomUUID(),data:build};setPresets(savePreset(preset));setNotice('Build salva.')}} />}
+
+      {tab === 'enemy' && <section><h2>Enemy</h2><div className="form-grid"><label>Nome<input value={enemy.name} onChange={(e)=>setEnemy({...enemy,name:e.target.value})}/></label><NumberField label="DEF" value={enemy.def} onChange={(def)=>setEnemy({...enemy,def})}/><NumberField label="Physical RES" value={(enemy.res.Physical??0)*100} onChange={(v)=>setEnemy({...enemy,res:{...enemy.res,Physical:v/100}})} suffix="%"/><NumberField label="DEF Reduction" value={enemy.defReduction*100} onChange={(v)=>setEnemy({...enemy,defReduction:v/100})} suffix="%"/><NumberField label="DMG Taken" value={enemy.dmgTaken*100} onChange={(v)=>setEnemy({...enemy,dmgTaken:v/100})} suffix="%"/><NumberField label="Stun Multiplier" value={enemy.stunMultiplier} onChange={(v)=>setEnemy({...enemy,stunMultiplier:v})}/><label className="check"><input type="checkbox" checked={enemy.stunned} onChange={(e)=>setEnemy({...enemy,stunned:e.target.checked})}/>Inimigo Stunned</label></div><button onClick={()=>save('enemy',enemy.name,enemy)}>Salvar inimigo</button></section>}
+
+      {tab === 'rotation' && <RotationBuilder team={team} rotation={rotation} onChange={setRotation} onSave={()=>save('rotation',rotation.name,rotation)} />}
+
+      {tab === 'results' && <Results result={result} team={team} rotation={rotation} enemy={enemy} onShare={share} />}
+
+      {tab === 'compare' && <Compare teamA={team} teamB={compareTeam} setTeamB={setCompareTeam} resultA={result} resultB={resultB} />}
+
+      {tab === 'saved' && <section><h2>Saved Builds / Presets</h2><div className="saved-actions"><textarea placeholder="Cole JSON versionado aqui" value={importText} onChange={(e)=>setImportText(e.target.value)}/><button onClick={()=>{try{const p=importPreset(importText);setPresets(savePreset(p));setNotice('Preset importado.');}catch(e){setNotice(`JSON inválido: ${e instanceof Error?e.message:'erro'}`)}}}>Importar JSON</button></div><div className="card-grid">{presets.map((p)=><article className="card" key={p.id}><h3>{p.name}</h3><p>{p.type} · schema {p.schemaVersion} · game {p.gameVersion}</p><div className="button-row"><button onClick={()=>loadPresetIntoApp(p,setTeam,setRotation,setEnemy,setNotice)}>Carregar</button><button onClick={()=>{const n=prompt('Novo nome',p.name);if(n)setPresets(renamePreset(p.id,n));}}>Renomear</button><button onClick={()=>setPresets(duplicatePreset(p.id))}>Duplicar</button><button onClick={()=>{navigator.clipboard?.writeText(exportPreset(p));setNotice('JSON copiado.')}}>Exportar</button><button className="danger" onClick={()=>setPresets(deletePreset(p.id))}>Excluir</button></div></article>)}</div></section>}
+
+      {tab === 'data' && <section><h2>Data / Sources</h2><div className="card"><p><b>Game Data Version:</b> {GAME_DATA_VERSION}</p><p><b>Last verified:</b> {LAST_VERIFIED}</p><p>Resultados que usam fixtures internas ou coeficientes marcados como não verificados não são apresentados como precisão de jogo.</p></div>{agents.map(a=><div className="source-row" key={a.id}><b>{a.name}</b><span className={a.meta.verified?'verified':'warning'}>{a.meta.verified?'verified':'unverified'}</span><code>{a.meta.source}</code></div>)}{anomalyDefinitions.map(a=><div className="source-row" key={a.attribute}><b>Anomaly {a.attribute}</b><span className={a.meta.verified?'verified':'warning'}>{a.meta.verified?'verified':'unverified'}</span><code>{a.meta.source}</code></div>)}</section>}
+    </main>
+  </div>;
+}
+
+function BuildEditor({ build, onChange, onSave }: { build: BuildConfig; onChange: (patch: Partial<BuildConfig>)=>void; onSave:()=>void }) {
+  const agent = agents.find(a=>a.id===build.agentId) ?? agents[0];
+  const wengine = wengines.find(w=>w.id===build.wengineId);
+  const resolution = resolveBuild(agent, build, wengine, driveDiscs);
+  const stats = build.useManualFinalStats ? (build.manualFinalStats ?? agent.baseStats) : resolution.stats;
+  return <section><div className="section-head"><h2>Build — {agent.name}</h2><button onClick={onSave}>Salvar build</button></div><div className="form-grid"><label>Agent<select value={build.agentId} onChange={(e)=>onChange({agentId:e.target.value})}>{agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label><NumberField label="Level" value={build.level} onChange={(level)=>onChange({level})}/><NumberField label="Mindscape" value={build.mindscape} onChange={(mindscape)=>onChange({mindscape:Math.max(0,Math.min(6,mindscape))})}/><label>W-Engine<select value={build.wengineId??''} onChange={(e)=>onChange({wengineId:e.target.value||undefined})}><option value="">Nenhum</option>{wengines.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></label><NumberField label="Refinement" value={build.refinement} onChange={(refinement)=>onChange({refinement:Math.max(1,Math.min(5,refinement))})}/><label className="check"><input type="checkbox" checked={build.useManualFinalStats} onChange={(e)=>onChange({useManualFinalStats:e.target.checked,manualFinalStats:build.manualFinalStats??{...agent.baseStats}})}/>Use manual final stats</label></div><h3>Drive Discs</h3><div className="button-row">{driveDiscs.map(d=>{const selected=build.driveDiscs.find(s=>s.setId===d.id);return <label key={d.id}>{d.name}<select value={selected?.pieces??0} onChange={(e)=>{const pieces=Number(e.target.value);onChange({driveDiscs:pieces?[...build.driveDiscs.filter(s=>s.setId!==d.id),{setId:d.id,pieces}]:build.driveDiscs.filter(s=>s.setId!==d.id)})}}><option value={0}>0pc</option><option value={2}>2pc</option><option value={4}>4pc</option></select></label>})}</div><h3>{build.useManualFinalStats?'Manual Final Stats':'Resolved Stats'}</h3><StatsEditor stats={stats} editable={build.useManualFinalStats} onChange={(manualFinalStats)=>onChange({manualFinalStats})}/>{resolution.warnings.map(w=><p className="warning" key={w}>{w}</p>)}<details><summary>Skill levels</summary><div className="form-grid">{(['Basic','Dodge','Assist','Special','Chain','Core'] as SkillType[]).map(type=><NumberField key={type} label={type} value={build.skillLevels[type]??12} onChange={(v)=>onChange({skillLevels:{...build.skillLevels,[type]:v}})}/>)}</div></details></section>;
+}
+
+function StatsEditor({stats,editable,onChange}:{stats:CombatStats;editable:boolean;onChange:(s:CombatStats)=>void}) { const fields: Array<[keyof CombatStats,string,number]> = [['atk','ATK',1],['hp','HP',1],['def','DEF',1],['impact','Impact',1],['critRate','CRIT Rate',100],['critDmg','CRIT DMG',100],['dmgBonus','DMG Bonus',100],['pen','PEN',1],['penRatio','PEN Ratio',100],['anomalyProficiency','AP',1],['anomalyMastery','AM',1]]; return <div className="stats-grid">{fields.map(([key,label,m])=><NumberField key={key} label={label} value={stats[key]*m} disabled={!editable} onChange={(v)=>onChange({...stats,[key]:v/m})} suffix={m===100?'%':''}/>)}</div> }
+
+function RotationBuilder({team,rotation,onChange,onSave}:{team:TeamConfig;rotation:RotationConfig;onChange:(r:RotationConfig)=>void;onSave:()=>void}) {
+  const addAction = () => { const agentId=team.builds[0]?.agentId; const agent=agents.find(a=>a.id===agentId); if(!agent)return; onChange({...rotation,actions:[...rotation.actions,{id:crypto.randomUUID(),type:'skill',agentId,skillId:agent.skills[0]?.id}]}); };
+  return <section><div className="section-head"><h2>Rotation Builder</h2><div className="button-row"><button onClick={addAction}>Adicionar ação</button><button onClick={()=>onChange({...rotation,actions:[]})}>Limpar</button><button onClick={onSave}>Salvar rotação</button></div></div><label>Nome<input value={rotation.name} onChange={(e)=>onChange({...rotation,name:e.target.value})}/></label><div className="rotation-list">{rotation.actions.map((action,index)=><RotationRow key={action.id} action={action} team={team} onChange={(next)=>onChange({...rotation,actions:rotation.actions.map((a,i)=>i===index?next:a)})} onRemove={()=>onChange({...rotation,actions:rotation.actions.filter((_,i)=>i!==index)})} onDuplicate={()=>onChange({...rotation,actions:[...rotation.actions.slice(0,index+1),{...action,id:crypto.randomUUID()},...rotation.actions.slice(index+1)]})} onMove={(dir)=>{const target=index+dir;if(target<0||target>=rotation.actions.length)return;const arr=[...rotation.actions];[arr[index],arr[target]]=[arr[target],arr[index]];onChange({...rotation,actions:arr});}} />)}</div></section>;
+}
+function RotationRow({action,team,onChange,onRemove,onDuplicate,onMove}:{action:RotationAction;team:TeamConfig;onChange:(a:RotationAction)=>void;onRemove:()=>void;onDuplicate:()=>void;onMove:(d:number)=>void}) { const agent=agents.find(a=>a.id===action.agentId); return <div className="rotation-row"><select value={action.type} onChange={(e)=>onChange({...action,type:e.target.value as RotationAction['type']})}><option value="skill">Skill</option><option value="switch">Switch</option><option value="wait">Wait</option></select>{action.type!=='wait'&&<select value={action.agentId} onChange={(e)=>{const nextAgent=agents.find(a=>a.id===e.target.value);onChange({...action,agentId:e.target.value,skillId:nextAgent?.skills[0]?.id})}}>{team.builds.map(b=>{const a=agents.find(x=>x.id===b.agentId);return a?<option key={a.id} value={a.id}>{a.name}</option>:null})}</select>}{action.type==='skill'&&<select value={action.skillId??''} onChange={(e)=>onChange({...action,skillId:e.target.value})}>{agent?.skills.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>}{action.type==='wait'&&<NumberField label="seg" value={action.durationOverride??1} onChange={(durationOverride)=>onChange({...action,durationOverride})}/>}<div className="row-buttons"><button onClick={()=>onMove(-1)}>↑</button><button onClick={()=>onMove(1)}>↓</button><button onClick={onDuplicate}>⧉</button><button className="danger" onClick={onRemove}>×</button></div></div> }
+
+function Results({result,team,rotation,enemy,onShare}:{result:ReturnType<typeof simulateRotation>;team:TeamConfig;rotation:RotationConfig;enemy:EnemyState;onShare:()=>void}) { return <section><div className="section-head"><h2>Results</h2><button onClick={onShare}>Copiar URL compartilhável</button></div><div className="metrics"><Metric title="DPS" value={fmt(result.dps)}/><Metric title="Total Damage" value={fmt(result.totalDamage)}/><Metric title="Rotation" value={`${result.duration.toFixed(2)} s`}/><Metric title="CRIT contribution" value={fmt(result.critContribution)}/><Metric title="Anomaly" value={fmt(result.anomalyContribution)}/></div><div className="split"><div className="card"><h3>Damage by Character</h3>{Object.entries(result.damageByCharacter).map(([id,dmg])=><Bar key={id} label={agents.find(a=>a.id===id)?.name??id} value={dmg} max={result.totalDamage}/>)}</div><div className="card"><h3>Buff Uptime</h3>{Object.entries(result.buffUptime).map(([id,v])=><Bar key={id} label={id} value={v*100} max={100} suffix="%"/>)}</div></div><details open><summary>Timeline</summary><div className="timeline">{result.timeline.map((entry,i)=><div key={`${entry.time}-${i}`}><time>{entry.time.toFixed(2)}s</time><span>{entry.label}</span><b>{entry.damage?fmt(entry.damage):''}</b></div>)}</div></details><DamageAudit team={team} enemy={enemy}/><p className="muted">Rotation: {rotation.name}</p></section> }
+function DamageAudit({team,enemy}:{team:TeamConfig;enemy:EnemyState}) { const b=team.builds[0]; if(!b)return null; const a=agents.find(x=>x.id===b.agentId); if(!a)return null; const skill=a.skills[0]; if(!skill)return null; const stats=resolveBuild(a,b,wengines.find(w=>w.id===b.wengineId),driveDiscs).stats; const hit=skill.hits[0]; const d=calculateStandardDamage({stats,enemy,skillMultiplier:hit.multiplier,attribute:skill.attribute,canCrit:hit.canCrit}); return <details><summary>Como esse dano foi calculado?</summary><div className="audit"><span>Base Damage <b>{fmt(d.baseDamage)}</b></span><span>DMG Bonus <b>×{d.dmgBonusMultiplier.toFixed(4)}</b></span><span>DEF <b>×{d.defMultiplier.toFixed(4)}</b></span><span>RES <b>×{d.resMultiplier.toFixed(4)}</b></span><span>Vulnerability <b>×{d.vulnerabilityMultiplier.toFixed(4)}</b></span><span>Stun <b>×{d.stunMultiplier.toFixed(4)}</b></span><span>CRIT <b>×{d.critMultiplier.toFixed(4)}</b></span><span>Non-CRIT <b>{fmt(d.nonCrit)}</b></span><span>CRIT Damage <b>{fmt(d.crit)}</b></span><span>Expected <b>{fmt(d.expected)}</b></span></div></details> }
+
+function Compare({teamA,teamB,setTeamB,resultA,resultB}:{teamA:TeamConfig;teamB:TeamConfig;setTeamB:(t:TeamConfig)=>void;resultA:ReturnType<typeof simulateRotation>;resultB:ReturnType<typeof simulateRotation>}) { const diff=resultA.dps?((resultB.dps/resultA.dps)-1)*100:0; return <section><h2>Compare Teams / Builds</h2><div className="compare-grid"><div className="card"><h3>Team A — {teamA.name}</h3>{teamA.builds.map(b=><p key={b.id}>{agents.find(a=>a.id===b.agentId)?.name}</p>)}<Metric title="DPS" value={fmt(resultA.dps)}/></div><div className="card"><h3>Team B</h3>{teamB.builds.map((b,i)=><label key={b.id}>Slot {i+1}<select value={b.agentId} onChange={(e)=>setTeamB({...teamB,builds:teamB.builds.map((x,j)=>j===i?{...x,agentId:e.target.value}:x)})}>{agents.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>)}<Metric title="DPS" value={fmt(resultB.dps)}/></div></div><div className={diff>=0?'delta positive':'delta negative'}>Team B: {diff>=0?'+':''}{diff.toFixed(2)}%</div><div className="card"><h3>Contribuição individual</h3>{[...new Set([...Object.keys(resultA.damageByCharacter),...Object.keys(resultB.damageByCharacter)])].map(id=><div className="compare-row" key={id}><span>{agents.find(a=>a.id===id)?.name??id}</span><span>A {fmt(resultA.damageByCharacter[id]??0)}</span><span>B {fmt(resultB.damageByCharacter[id]??0)}</span></div>)}</div></section> }
+
+function NumberField({label,value,onChange,suffix,disabled}:{label:string;value:number;onChange:(v:number)=>void;suffix?:string;disabled?:boolean}) { return <label>{label}<div className="number"><input type="number" step="any" value={Number.isFinite(value)?value:0} disabled={disabled} onChange={(e)=>onChange(Number(e.target.value))}/>{suffix&&<span>{suffix}</span>}</div></label> }
+function Metric({title,value}:{title:string;value:string}) { return <div className="metric"><span>{title}</span><b>{value}</b></div> }
+function Bar({label,value,max,suffix}:{label:string;value:number;max:number;suffix?:string}) { return <div className="bar-row"><div><span>{label}</span><b>{value.toFixed(suffix?1:0)}{suffix}</b></div><progress value={value} max={Math.max(max,1)}/></div> }
+function fmt(value:number){ return Math.round(value).toLocaleString('pt-BR'); }
+function labelTab(tab:Tab){return ({characters:'Characters',team:'Team',build:'Build',enemy:'Enemy',rotation:'Rotation',results:'Results',compare:'Compare',saved:'Saved',data:'Data / Sources'} as Record<Tab,string>)[tab]}
+function updateBuild(setTeam:React.Dispatch<React.SetStateAction<TeamConfig>>,team:TeamConfig,index:number,patch:Partial<BuildConfig>){setTeam({...team,builds:team.builds.map((b,i)=>i===index?{...b,...patch}:b)})}
+function loadPresetIntoApp(p:PresetEnvelope,setTeam:React.Dispatch<React.SetStateAction<TeamConfig>>,setRotation:React.Dispatch<React.SetStateAction<RotationConfig>>,setEnemy:React.Dispatch<React.SetStateAction<EnemyState>>,setNotice:(s:string)=>void){ if(p.type==='team')setTeam(p.data as TeamConfig); else if(p.type==='rotation')setRotation(p.data as RotationConfig); else if(p.type==='enemy')setEnemy(p.data as EnemyState); else if(p.type==='build')setTeam((current)=>({...current,builds:[p.data as BuildConfig,...current.builds.slice(1)]})); setNotice(`${p.name} carregado.`); }
+
+createRoot(document.getElementById('root')!).render(<React.StrictMode><ErrorBoundary><App/></ErrorBoundary></React.StrictMode>);

@@ -1,89 +1,74 @@
 # CalcZZZ
 
-Calculadora de DPS/theorycraft para **Zenless Zone Zero**, construída para separar dados do jogo, regras condicionais e matemática de combate da interface.
+Calculadora de DPS/theorycraft para **Zenless Zone Zero** com motor matemático separado da UI, efeitos declarativos, timeline de combate, comparação, presets e auditoria do cálculo.
 
-**Baseline atual dos dados:** ZZZ 3.1 — *The Long Goodbye*  
-**Última revisão:** 20/08/2026
+**Game Data Version:** 3.1  
+**Last verified:** 2026-08-20
 
-## Estado do MVP
+> Precisão é rastreável por dado. Definições com `meta.verified=false` aparecem como não verificadas e não devem ser tratadas como reprodução perfeita do jogo.
 
-Já implementado no branch `feat/mvp-calculator`:
-
-- React + TypeScript + Vite;
-- engine de dano padrão auditável;
-- Non-CRIT, CRIT e Expected Damage;
-- DEF, PEN, PEN Ratio, RES, RES Reduction, DMG Taken e Stun;
-- base de Attribute Anomaly;
-- engine de efeitos com duração, alvo, condição e stacks;
-- timeline de rotação e cálculo de DPS;
-- regra real da Additional Ability da Dialyn;
-- dataset versionado inicial da Dialyn;
-- UI responsiva;
-- testes unitários para dano, CRIT, DEF/PEN, RES, Stun, Anomaly e buffs temporários;
-- documentação das fórmulas e fontes;
-- workflow de CI para `npm test` + `npm run build`.
-
-## Executar localmente
+## Executar
 
 ```bash
 npm install
 npm run dev
 ```
 
-Abrir o endereço exibido pelo Vite.
-
-## Testes
+Build/testes:
 
 ```bash
+npm run lint
+npm run typecheck
+npm run validate-data
 npm test
 npm run build
 ```
 
+## Funcionalidades
+
+- Damage Engine com ATK, multiplicador da skill, DMG Bonus, CRIT, DEF/DEF Reduction/DEF Ignore, PEN/PEN Ratio, RES/RES Reduction/RES Ignore, Vulnerability, Stun e multiplicador especial.
+- Effect Engine genérico com Trigger, Condition, Target, Modifier, Duration, Stack, Cooldown, Reapply, Snapshot metadata e Source.
+- Targets: `SELF`, `ACTIVE_CHARACTER`, `TEAM`, `SPECIFIC_CHARACTER`, `ENEMY`.
+- Condições combináveis com AND/OR/NOT e regras de composição, inimigo, campo, stacks, energia, ação anterior e janela temporal.
+- Timeline com skills, hits, switches, waits, expiração de buffs e Anomaly.
+- Anomaly buildup, contribuição ponderada por agente, AP/AM e Disorder no motor; coeficientes sem revalidação online são marcados como não verificados.
+- Editor de build, stats manuais, W-Engine/Refinement, Drive Disc 2pc/4pc, Mindscape infrastructure e skill levels.
+- Rotation Builder: adicionar, remover, reordenar, duplicar, limpar e salvar.
+- Resultados: Total Damage, DPS, duração, dano por personagem/skill, buff uptime, field time, CRIT/Anomaly contribution e timeline.
+- Comparação Team A × Team B.
+- LocalStorage: save/load/rename/duplicate/delete.
+- Import/Export JSON versionado.
+- URL compartilhável por estado base64url.
+- Error Boundary e validação de dados.
+- UI responsiva.
+
+## Dados reais vs fixtures
+
+O agente **Dialyn** usa os dados verificados que já estavam auditados no projeto para ZZZ 3.1: stats base usados, três EX Specials e Additional Ability. O projeto mantém também fixtures determinísticas (`Training *`) para regressão matemática. Elas são explicitamente marcadas como **não sendo personagens/W-Engines/Drive Discs do jogo**.
+
+O navegador/web externo ficou indisponível durante esta etapa. Por isso, nenhum número novo foi inventado para preencher personagens, Mindscapes, W-Engines ou Drive Discs que não puderam ser revalidados. Consulte `docs/SOURCES.md` e `docs/LIMITATIONS.md`.
+
 ## Arquitetura
 
 ```text
-UI
-↓
+React UI
+  ↓
+Build Resolver / Presets / Share State
+  ↓
 Rotation Simulator
-↓
-Effect Engine
-↓
+  ↓
+Effect Engine + Condition Engine + Anomaly Engine
+  ↓
 Damage Engine
-↓
+  ↓
 Versioned Game Data
 ```
 
-Arquivos principais:
+Documentação:
 
-```text
-src/
-  data/
-    agents.ts
-  engine/
-    damage.ts
-    effects.ts
-    rotation.ts
-    types.ts
-    damage.test.ts
-  main.tsx
-  styles.css
-
-docs/
-  FORMULAS.md
-```
-
-## Próximas etapas
-
-O MVP ainda não representa a aplicação final. Os próximos blocos são:
-
-1. decompor o banco em `agents/`, `w-engines/`, `drive-discs/`, `enemies/` e `rotations/`;
-2. adicionar builds completas, skill levels e Mindscapes;
-3. implementar W-Engines e Drive Discs como efeitos declarativos;
-4. adicionar contribuição ponderada de múltiplos agentes em Anomaly/Disorder;
-5. expandir a timeline com troca de personagem, buffs expirando, energia, stacks e cooldowns;
-6. adicionar comparação Build A × Build B e Team A × Team B;
-7. LocalStorage + import/export JSON + URL compartilhável;
-8. expandir o banco de agentes preservando fonte, versão e data;
-9. validar resultados contra testes observados no jogo.
-
-Veja [`docs/FORMULAS.md`](docs/FORMULAS.md) para fórmulas, fontes e premissas do motor.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/FORMULAS.md`](docs/FORMULAS.md)
+- [`docs/ADDING_AGENT.md`](docs/ADDING_AGENT.md)
+- [`docs/SOURCES.md`](docs/SOURCES.md)
+- [`docs/DATA_SCHEMA.md`](docs/DATA_SCHEMA.md)
+- [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md)

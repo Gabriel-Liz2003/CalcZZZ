@@ -1,0 +1,12 @@
+import { describe,expect,it } from 'vitest';
+import { simulateRotation } from './rotation';
+import { agents } from '../data/agents';
+import { wengines } from '../data/wengines';
+import { driveDiscs } from '../data/discs';
+import { trainingDummy } from '../data/enemies';
+import type { AnomalyDefinition,TeamConfig } from './types';
+const build=(agentId:string)=>({id:agentId,name:agentId,agentId,level:60,mindscape:0,skillLevels:{},wengineLevel:60,refinement:1,driveDiscs:[],mainStats:{},substats:{},useManualFinalStats:false});
+const team:TeamConfig={id:'t',name:'t',builds:[build('training-support'),build('training-attacker')]};
+const meta={gameVersion:'test',source:'test',lastVerified:'test',verified:true};
+const anomalyDefinitions:AnomalyDefinition[]=[{attribute:'Physical',threshold:100,baseMultiplier:7,duration:4,meta}];
+describe('rotation simulator',()=>{it('buff temporário afeta hits posteriores e gera breakdown agregado',()=>{const withBuff=simulateRotation(team,trainingDummy,{id:'r',name:'r',actions:[{id:'1',type:'skill',agentId:'training-support',skillId:'support-ex'},{id:'2',type:'switch',agentId:'training-attacker'},{id:'3',type:'skill',agentId:'training-attacker',skillId:'test-hit'}]},{agents,wengines,discs:driveDiscs,anomalyDefinitions});const noBuff=simulateRotation(team,trainingDummy,{id:'r2',name:'r2',actions:[{id:'2',type:'switch',agentId:'training-attacker'},{id:'3',type:'skill',agentId:'training-attacker',skillId:'test-hit'}]},{agents,wengines,discs:driveDiscs,anomalyDefinitions});expect(withBuff.damageBySkill['training-attacker:test-hit']).toBeGreaterThan(noBuff.damageBySkill['training-attacker:test-hit']);expect(withBuff.buffUptime['fixture-team-buff']).toBeGreaterThan(0);expect(withBuff.fieldTime['training-attacker']).toBeGreaterThan(0)});it('timeline respeita hit timing e duração',()=>{const r=simulateRotation(team,trainingDummy,{id:'r',name:'r',actions:[{id:'1',type:'skill',agentId:'training-attacker',skillId:'test-ult'}]},{agents,wengines,discs:driveDiscs,anomalyDefinitions});expect(r.duration).toBeCloseTo(2);expect(r.timeline.find(e=>e.kind==='hit')?.time).toBeCloseTo(1)})});

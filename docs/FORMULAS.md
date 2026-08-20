@@ -1,108 +1,59 @@
-# CalcZZZ — Fórmulas e fontes
-
-Data baseline: **Zenless Zone Zero 3.1**  
-Última revisão: **2026-08-20**
+# Fórmulas
 
 ## Dano padrão
 
-Estrutura implementada:
-
 ```text
-Standard DMG = Base DMG
-             × DMG Bonus Multiplier
-             × CRIT Multiplier
-             × DEF Multiplier
-             × RES Multiplier
-             × DMG Taken Multiplier
-             × Stun Multiplier
+BaseDamage = ATK × SkillMultiplier
+Damage = BaseDamage
+       × (1 + DMGBonus)
+       × DEFMultiplier
+       × RESMultiplier
+       × (1 + Vulnerability)
+       × StunMultiplier
+       × SpecialMultiplier
 ```
 
-Onde:
+CRIT:
 
 ```text
-Base DMG = Scaling Stat × Skill Multiplier
-DMG Bonus Multiplier = 1 + Total DMG Bonus
-Average CRIT Multiplier = 1 + CRIT Rate × CRIT DMG
+CritDamage = NonCrit × (1 + CritDMG)
+Expected = NonCrit × (1 - CritRate) + CritDamage × CritRate
 ```
 
-A UI também expõe Non-CRIT, CRIT e Expected separadamente.
+CRIT Rate é limitado a `[0, 1]` no cálculo esperado.
 
 ## DEF
 
-Para o MVP:
+Para atacante de nível 60, a implementação preservada usa fator `794`:
 
 ```text
-Effective DEF = max(
-  Enemy DEF
-  × (1 - DEF Reduction)
-  × (1 - PEN Ratio)
-  × (1 - DEF Ignore)
-  - Flat PEN,
-  0
-)
-
-DEF Multiplier = Level Factor / (Effective DEF + Level Factor)
+ReducedDEF = EnemyDEF × (1 - DEFReduction)
+IgnoredDEF = ReducedDEF × (1 - DEFIgnore)
+RatioDEF   = IgnoredDEF × (1 - PENRatio)
+EffectiveDEF = max(0, RatioDEF - PEN)
+DEFMultiplier = 794 / (794 + EffectiveDEF)
 ```
 
-O Level Factor usado para agente nível 60 é **794**.
-
-> Observação: DEF Reduction, DEF Ignore e PEN precisam continuar sendo validados para casos especiais que alterem a ordem/forma de aplicação. O motor mantém cada campo separado para permitir ajustes sem espalhar lógica na UI.
+Reduction, Ignore, PEN Ratio e PEN ficam separados.
 
 ## RES
 
-```text
-RES Multiplier = 1 - Enemy RES + RES Reduction + RES Ignore
-```
+`effectiveRes = enemyRes - resReduction - resIgnore`.
 
-## Stun
+- RES negativa: `1 - RES/2`
+- `0 ≤ RES < 0.75`: `1 - RES`
+- RES alta: `1 / (1 + 5×RES)`
 
-Quando o alvo não está Stunned, o multiplicador é `1`.
-Quando está Stunned, usa-se o Stun DMG Multiplier configurado no inimigo/preset.
-
-## Attribute Anomaly
-
-Estrutura implementada:
+## Anomaly
 
 ```text
-Anomaly DMG = Anomaly Base DMG
-            × Anomaly Proficiency Multiplier
-            × Anomaly Level Multiplier
-            × DMG Bonus Multiplier
-            × DEF Multiplier
-            × RES Multiplier
-            × DMG Taken Multiplier
-            × Stun Multiplier
+Buildup = BaseBuildup × AM / 100
 ```
 
-O motor já aceita os multiplicadores de Anomaly como parâmetro. O suporte a contribuição ponderada de múltiplos agentes para a mesma Anomaly ainda é um item da próxima etapa.
+Quando threshold é atingido, cada agente contribui proporcionalmente ao buildup. ATK e AP são ponderados pela contribuição.
 
-Multiplicadores de referência documentados pela comunidade/wiki:
+Os coeficientes em `src/data/anomalies.ts` permanecem `verified:false` até nova revalidação externa.
 
-- Burn: 50% por proc, 20 procs
-- Shock: 125% por proc, 10 procs
-- Corruption: 62.5% por proc, 20 procs
-- Shatter: 500%
-- Assault: 713%
+## Arredondamento
 
-## Dialyn usada no MVP
-
-Dados usados no MVP:
-
-- Lv.60 ATK: 758
-- CRIT Rate: 19.4%
-- CRIT DMG: 50%
-- EX Special: Rock Lv.12: 808.8%
-- EX Special: Scissors Lv.12: 1050.7%
-- EX Special: Paper! Lv.12: 1403.5%
-- Additional Ability `External Line`: quando há outro agente Attack ou Rupture, Dialyn ganha +50% CRIT DMG em EX Special; usar EX Special/Ultimate concede ao time +40% DMG por 15s.
-
-## Fontes
-
-1. Zenless Zone Zero Wiki — Damage: https://zenless-zone-zero.fandom.com/wiki/Damage
-2. Zenless Zone Zero Wiki — Dialyn: https://zenless-zone-zero.fandom.com/wiki/Dialyn
-3. Zenless Zone Zero Wiki — Additional Ability: External Line: https://zenless-zone-zero.fandom.com/wiki/Additional_Ability%3A_External_Line
-4. HoYoLAB — Version 3.1 “The Long Goodbye” Update Announcement: https://www.hoyolab.com/article/46037106
-
-## Política de dados
-
-Nenhum número de personagem deve ser colocado diretamente nos componentes visuais. Dados de agentes, skills e efeitos ficam em `src/data/`; o cálculo fica em `src/engine/`. Um dado de jogo deve conter, sempre que possível, versão, fonte e data da última revisão.
+O motor mantém precisão dupla durante etapas intermediárias e arredonda somente para exibição. Uma política interna do jogo deve ser adicionada somente após confirmação e teste de regressão.

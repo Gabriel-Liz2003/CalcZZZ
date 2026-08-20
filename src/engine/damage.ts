@@ -1,65 +1,48 @@
-import type { CombatStats, DamageBreakdown, EnemyState } from './types';
+import type { Attribute, CombatStats, DamageBreakdown, EnemyState } from './types';
 
-const LEVEL_FACTOR_60 = 794;
+export const ATTACKER_LEVEL_FACTOR_60 = 794;
 
-export function defMultiplier(stats: CombatStats, enemy: EnemyState, levelFactor = LEVEL_FACTOR_60): number {
-  const effectiveDef = Math.max(
-    enemy.def * (1 - enemy.defReduction) * (1 - stats.penRatio) * (1 - enemy.defIgnore) - stats.pen,
-    0,
-  );
-  return levelFactor / (effectiveDef + levelFactor);
+export function defenseMultiplier(stats: CombatStats, enemy: EnemyState, attackerLevelFactor = ATTACKER_LEVEL_FACTOR_60): number {
+  const defenseAfterReduction = Math.max(0, enemy.def * Math.max(0, 1 - enemy.defReduction));
+  const defenseAfterIgnore = defenseAfterReduction * Math.max(0, 1 - enemy.defIgnore);
+  const defenseAfterPenRatio = defenseAfterIgnore * Math.max(0, 1 - stats.penRatio);
+  const effectiveDefense = Math.max(0, defenseAfterPenRatio - stats.pen);
+  return attackerLevelFactor / (attackerLevelFactor + effectiveDefense);
 }
 
-export function resMultiplier(stats: CombatStats, enemy: EnemyState): number {
-  return 1 - enemy.res + enemy.resReduction + stats.resIgnore;
+export function resistanceMultiplier(stats: CombatStats, enemy: EnemyState, attribute: Attribute): number {
+  const effectiveRes = (enemy.res[attribute] ?? 0) - (enemy.resReduction[attribute] ?? 0) - stats.resIgnore;
+  if (effectiveRes < 0) return 1 - effectiveRes / 2;
+  if (effectiveRes < 0.75) return 1 - effectiveRes;
+  return 1 / (1 + 5 * effectiveRes);
 }
 
-export function calculateStandardDamage(
-  stats: CombatStats,
-  enemy: EnemyState,
-  skillMultiplier: number,
-): DamageBreakdown {
+export function calculateStandardDamage(input: {
+  stats: CombatStats;
+  enemy: EnemyState;
+  skillMultiplier: number;
+  attribute: Attribute;
+  canCrit?: boolean;
+  specialMultiplier?: number;
+}): DamageBreakdown {
+  const { stats, enemy, skillMultiplier, attribute } = input;
+  const specialMultiplier = input.specialMultiplier ?? 1;
   const baseDamage = stats.atk * skillMultiplier;
-  const dmgBonusMultiplier = 1 + stats.dmgBonus;
-  const defense = defMultiplier(stats, enemy);
-  const resistance = resMultiplier(stats, enemy);
-  const dmgTakenMultiplier = 1 + enemy.dmgTaken;
-  const stun = enemy.stunned ? enemy.stunMultiplier : 1;
-  const common = baseDamage * dmgBonusMultiplier * defense * resistance * dmgTakenMultiplier * stun;
+  const dmgBonusMultiplier = Math.max(0, 1 + stats.dmgBonus);
+  const defMultiplier = defenseMultiplier(stats, enemy);
+  const resMultiplier = resistanceMultiplier(stats, enemy, attribute);
+  const vulnerabilityMultiplier = Math.max(0, 1 + enemy.dmgTaken);
+  const stunMultiplier = enemy.stunned ? enemy.stunMultiplier : 1;
+  const common = baseDamage * dmgBonusMultiplier * defMultiplier * resMultiplier * vulnerabilityMultiplier * stunMultiplier * specialMultiplier;
+  const critRate = input.canCrit === false ? 0 : Math.min(1, Math.max(0, stats.critRate));
+  const critMultiplier = 1 + Math.max(0, stats.critDmg);
   const nonCrit = common;
-  const crit = common * (1 + stats.critDmg);
-  const critRate = Math.min(Math.max(stats.critRate, 0), 1);
+  const crit = common * critMultiplier;
   const expected = nonCrit * (1 - critRate) + crit * critRate;
-
-  return {
-    baseDamage,
-    dmgBonusMultiplier,
-    defMultiplier: defense,
-    resMultiplier: resistance,
-    dmgTakenMultiplier,
-    stunMultiplier: stun,
-    nonCrit,
-    crit,
-    expected,
-  };
+  return { baseDamage, skillMultiplier, dmgBonusMultiplier, critMultiplier, defMultiplier, resMultiplier, vulnerabilityMultiplier, stunMultiplier, specialMultiplier, nonCrit, crit, expected };
 }
 
-export function calculateAnomalyDamage(
-  stats: CombatStats,
-  enemy: EnemyState,
-  anomalyMultiplier: number,
-  anomalyLevelMultiplier = 1,
-): number {
-  const ap = (stats.anomalyProficiency ?? 100) / 100;
-  const base = stats.atk * anomalyMultiplier;
-  return (
-    base *
-    ap *
-    anomalyLevelMultiplier *
-    (1 + stats.dmgBonus) *
-    defMultiplier(stats, enemy) *
-    resMultiplier(stats, enemy) *
-    (1 + enemy.dmgTaken) *
-    (enemy.stunned ? enemy.stunMultiplier : 1)
-  );
+export function expectedCritContribution(breakdown: DamageBreakdown, critRate: number): number {
+  const rate = Math.min(1, Math.max(0, critRate));
+  return (breakdown.crit - breakdown.nonCrit) * rate;
 }

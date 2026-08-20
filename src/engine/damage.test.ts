@@ -1,64 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { calculateAnomalyDamage, calculateStandardDamage, defMultiplier } from './damage';
-import { activateEffect, applyEffects, isEffectActive } from './effects';
-import { dialyn, dialynAdditionalAbility, trainingAttacker } from '../data/agents';
-import type { EnemyState } from './types';
+import { calculateStandardDamage, defenseMultiplier, resistanceMultiplier } from './damage';
+import type { CombatStats, EnemyState } from './types';
 
-const enemy: EnemyState = {
-  def: 794,
-  res: 0.1,
-  resReduction: 0,
-  defReduction: 0,
-  defIgnore: 0,
-  dmgTaken: 0,
-  stunned: false,
-  stunMultiplier: 1.5,
-};
+const stats: CombatStats = { hp:8000,atk:3000,def:600,impact:100,critRate:.5,critDmg:1,dmgBonus:.5,pen:0,penRatio:0,resIgnore:0,anomalyProficiency:100,anomalyMastery:100,energyRegen:1.2 };
+const enemy: EnemyState = { id:'x',name:'x',level:60,def:794,res:{Physical:.1},resReduction:{},defReduction:0,defIgnore:0,dmgTaken:0,stunned:false,stunMultiplier:1.5,daze:0,maxDaze:100,debuffs:[] };
 
-describe('damage engine', () => {
-  it('calculates expected crit damage from non-crit and crit outcomes', () => {
-    const stats = { ...trainingAttacker.stats, critRate: 0.5, critDmg: 1 };
-    const result = calculateStandardDamage(stats, enemy, 1);
-    expect(result.expected).toBeCloseTo((result.nonCrit + result.crit) / 2, 8);
-  });
-
-  it('caps crit rate at 100%', () => {
-    const stats = { ...trainingAttacker.stats, critRate: 5 };
-    const result = calculateStandardDamage(stats, enemy, 1);
-    expect(result.expected).toBeCloseTo(result.crit, 8);
-  });
-
-  it('applies PEN Ratio and flat PEN to DEF', () => {
-    const base = defMultiplier(trainingAttacker.stats, enemy);
-    const penetrated = defMultiplier({ ...trainingAttacker.stats, penRatio: 0.2, pen: 100 }, enemy);
-    expect(penetrated).toBeGreaterThan(base);
-  });
-
-  it('applies RES reduction and stunned multiplier', () => {
-    const base = calculateStandardDamage(trainingAttacker.stats, enemy, 1).expected;
-    const boosted = calculateStandardDamage(trainingAttacker.stats, { ...enemy, resReduction: 0.2, stunned: true }, 1).expected;
-    expect(boosted).toBeGreaterThan(base);
-  });
-
-  it('scales anomaly damage with anomaly proficiency', () => {
-    const low = calculateAnomalyDamage({ ...trainingAttacker.stats, anomalyProficiency: 100 }, enemy, 7.13);
-    const high = calculateAnomalyDamage({ ...trainingAttacker.stats, anomalyProficiency: 200 }, enemy, 7.13);
-    expect(high).toBeCloseTo(low * 2, 8);
-  });
-});
-
-describe('effect engine', () => {
-  it('activates Dialyn team buff only with Attack or Rupture teammate', () => {
-    const timed = activateEffect(dialynAdditionalAbility, dialyn.id, 0);
-    const validCtx = { activeAgentId: dialyn.id, team: [dialyn, trainingAttacker], time: 1 };
-    expect(isEffectActive(timed, 1, validCtx)).toBe(true);
-    expect(isEffectActive(timed, 16, { ...validCtx, time: 16 })).toBe(false);
-  });
-
-  it('applies the 40% team DMG bonus while the timed buff is active', () => {
-    const timed = activateEffect(dialynAdditionalAbility, dialyn.id, 0);
-    const ctx = { activeAgentId: trainingAttacker.id, team: [dialyn, trainingAttacker], time: 5 };
-    const state = applyEffects(trainingAttacker.stats, enemy, [timed], ctx);
-    expect(state.stats.dmgBonus).toBeCloseTo(trainingAttacker.stats.dmgBonus + 0.4, 8);
-  });
+describe('damage formula',()=>{
+  it('separa non-crit, crit e expected',()=>{const d=calculateStandardDamage({stats,enemy,skillMultiplier:1,attribute:'Physical'});expect(d.baseDamage).toBe(3000);expect(d.crit).toBeCloseTo(d.nonCrit*2);expect(d.expected).toBeCloseTo((d.nonCrit+d.crit)/2)});
+  it('aplica DEF e PEN sem produzir defesa negativa',()=>{expect(defenseMultiplier(stats,enemy)).toBeCloseTo(.5);expect(defenseMultiplier({...stats,pen:99999},enemy)).toBe(1)});
+  it('aplica DEF reduction e ignore separadamente',()=>{const reduced={...enemy,defReduction:.2,defIgnore:.25};expect(defenseMultiplier(stats,reduced)).toBeGreaterThan(.5)});
+  it('suporta resistência positiva, negativa e alta',()=>{expect(resistanceMultiplier(stats,enemy,'Physical')).toBeCloseTo(.9);expect(resistanceMultiplier(stats,{...enemy,res:{Physical:-.2}},'Physical')).toBeCloseTo(1.1);expect(resistanceMultiplier(stats,{...enemy,res:{Physical:.8}},'Physical')).toBeCloseTo(.2)});
+  it('aplica stun e vulnerability',()=>{const normal=calculateStandardDamage({stats,enemy,skillMultiplier:1,attribute:'Physical'});const stunned=calculateStandardDamage({stats,enemy:{...enemy,stunned:true,dmgTaken:.2},skillMultiplier:1,attribute:'Physical'});expect(stunned.expected/normal.expected).toBeCloseTo(1.8)});
+  it('limita crit rate a 100%',()=>{const d=calculateStandardDamage({stats:{...stats,critRate:9},enemy,skillMultiplier:1,attribute:'Physical'});expect(d.expected).toBeCloseTo(d.crit)});
 });
