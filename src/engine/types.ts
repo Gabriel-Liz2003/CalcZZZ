@@ -8,9 +8,9 @@ export type ModifierMode = 'add' | 'multiply' | 'override';
 export type StatKey = keyof CombatStats | 'enemyDefReduction' | 'enemyDefIgnore' | 'enemyResReduction' | 'enemyDmgTaken' | 'stunMultiplier' | 'skillMultiplier';
 
 export interface DataMeta { gameVersion: string; source: string; lastVerified: string; verified: boolean; notes?: string; sourceId?: string; }
-export interface CombatStats { hp:number; atk:number; def:number; impact:number; critRate:number; critDmg:number; dmgBonus:number; pen:number; penRatio:number; resIgnore:number; anomalyProficiency:number; anomalyMastery:number; energyRegen:number; dazeBonus?:number; energyGenerationRate?:number; }
+export interface CombatStats { hp:number; atk:number; def:number; impact:number; critRate:number; critDmg:number; dmgBonus:number; pen:number; penRatio:number; resIgnore:number; anomalyProficiency:number; anomalyMastery:number; energyRegen:number; dazeBonus?:number; energyGenerationRate?:number; sheerForce?:number; }
 export interface EnemyState { id:string; name:string; level:number; def:number; res:Partial<Record<Attribute,number>>; resReduction:Partial<Record<Attribute,number>>; defReduction:number; defIgnore:number; dmgTaken:number; stunned:boolean; stunMultiplier:number; daze:number; maxDaze:number; debuffs:string[]; stunStart?:number; stunDuration?:number; dazeRes?:number; dazeTaken?:number; maxChainAttacks?:number; anomalyThreshold?:Partial<Record<Attribute,number>>; anomalyBuildupRes?:Partial<Record<Attribute,number>>; }
-export interface SkillHit { multiplier:number; at:number; anomalyBuildup?:number; dazeMultiplier?:number; canCrit?:boolean; heavy?:boolean; }
+export interface SkillHit { multiplier:number; at:number; anomalyBuildup?:number; dazeMultiplier?:number; canCrit?:boolean; heavy?:boolean; multiplierGrowth?:number; dazeGrowth?:number; }
 export interface SkillDefinition { id:string; name:string; type:SkillType; level:number; attribute:Attribute; duration:number; energyCost?:number; energyGeneration?:number; hits:SkillHit[]; specialProperties?:string[]; meta:DataMeta; }
 export type Condition =
   | { op:'always' }
@@ -32,7 +32,7 @@ export type Condition =
   | { op:'previousActionIs'; skillType:SkillType }
   | { op:'timeSinceTriggerAtMost'; trigger:Trigger; seconds:number };
 export interface EffectModifier { stat:StatKey; value:number; mode?:ModifierMode; attribute?:Attribute; refinementValues?:number[]; }
-export interface EffectDefinition { id:string; name:string; description:string; sourceType:'agent'|'mindscape'|'wengine'|'disc'|'enemy'|'manual'; trigger:Trigger; target:EffectTarget; specificCharacterId?:string; modifiers:EffectModifier[]; condition?:Condition; duration?:number; maxStacks?:number; stacksPerTrigger?:number; cooldown?:number; reapply?:ReapplyPolicy; extendBy?:number; maxDuration?:number; snapshot?:boolean; meta:DataMeta; }
+export interface EffectDefinition { id:string; name:string; description:string; sourceType:'agent'|'mindscape'|'wengine'|'disc'|'enemy'|'manual'; trigger:Trigger; target:EffectTarget; specificCharacterId?:string; modifiers:EffectModifier[]; condition?:Condition; duration?:number; maxStacks?:number; stacksPerTrigger?:number; cooldown?:number; reapply?:ReapplyPolicy; extendBy?:number; extendIfRemainingBelow?:number; maxDuration?:number; snapshot?:boolean; meta:DataMeta; }
 export interface MindscapeDefinition { level:1|2|3|4|5|6; name:string; description:string; effects:EffectDefinition[]; skillLevelBonuses?:Partial<Record<SkillType,number>>; meta:DataMeta; }
 export interface AgentDefinition { id:string; name:string; rarity:'S'|'A'; attribute:Attribute; specialty:Specialty; faction:string; maxLevel:number; baseStats:CombatStats; staticBonuses?:Partial<CombatStats>; skills:SkillDefinition[]; coreEffects:EffectDefinition[]; additionalAbility?:EffectDefinition; mindscapes:MindscapeDefinition[]; meta:DataMeta; }
 export interface WEngineDefinition { id:string; name:string; rarity:'S'|'A'|'B'; specialty:Specialty; level:number; baseAtk:number; advancedStat:{stat:StatKey;value:number}; refinementValues?:number[]; effects:EffectDefinition[]; meta:DataMeta; }
