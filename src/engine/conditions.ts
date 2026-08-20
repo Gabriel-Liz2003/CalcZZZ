@@ -10,11 +10,14 @@ export function evaluateCondition(condition: Condition | undefined, ctx: EffectC
     case 'hasFactionMember': return state.team.some((agent) => (!condition.excludingSelf || agent.id !== sourceAgentId) && agent.faction === condition.faction);
     case 'hasAttributeMember': return state.team.some((agent) => (!condition.excludingSelf || agent.id !== sourceAgentId) && agent.attribute === condition.attribute);
     case 'hasSpecialtyMember': return state.team.some((agent) => (!condition.excludingSelf || agent.id !== sourceAgentId) && agent.specialty === condition.specialty);
+    case 'sourceHasSpecialty': return state.team.find((agent) => agent.id === sourceAgentId)?.specialty === condition.specialty;
+    case 'sourceStatAtLeast': return (state.characterStates[sourceAgentId]?.staticStats?.[condition.stat] ?? 0) >= condition.value;
+    case 'currentSkillTypeIs': return state.currentAction?.agentId === sourceAgentId && state.currentAction.skillType === condition.skillType;
     case 'enemyIsStunned': return state.enemy.stunned === (condition.value ?? true);
     case 'enemyHasDebuff': return state.enemy.debuffs.includes(condition.debuff);
     case 'characterIsActive': return state.activeCharacterId === sourceAgentId;
     case 'characterIsOffField': return state.activeCharacterId !== sourceAgentId;
-    case 'stackAtLeast': return state.activeEffects.some((effect) => effect.definition.id === condition.effectId && effect.stacks >= condition.count);
+    case 'stackAtLeast': return state.activeEffects.some((effect) => effect.definition.id === condition.effectId && effect.sourceCharacterId === sourceAgentId && effect.stacks >= condition.count);
     case 'energyAtLeast': return (state.characterStates[sourceAgentId]?.energy ?? 0) >= condition.amount;
     case 'previousActionIs': return state.lastAction?.skillType === condition.skillType;
     case 'timeSinceTriggerAtMost': {
@@ -43,6 +46,9 @@ export function describeCondition(condition: Condition): string {
     case 'hasFactionMember': return `há membro da facção ${condition.faction}`;
     case 'hasAttributeMember': return `há membro ${condition.attribute}`;
     case 'hasSpecialtyMember': return `há membro ${condition.specialty}`;
+    case 'sourceHasSpecialty': return `fonte é ${condition.specialty}`;
+    case 'sourceStatAtLeast': return `${condition.stat} da fonte ≥ ${condition.value}`;
+    case 'currentSkillTypeIs': return `skill atual é ${condition.skillType}`;
     case 'enemyIsStunned': return `inimigo ${condition.value === false ? 'não ' : ''}está Stunned`;
     case 'enemyHasDebuff': return `inimigo possui debuff ${condition.debuff}`;
     case 'characterIsActive': return 'fonte está ativa';
